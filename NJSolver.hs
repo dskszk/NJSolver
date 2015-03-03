@@ -26,17 +26,20 @@ drawDiag (Node (r, s) xs) = "\\infer[" ++ show r ++ "]{" ++ show s ++ "}{"
     ++ (intercalate "&" $ map drawDiag xs) ++ "}"
 
 contra a@(Node (ID, _) []) = a
+contra (Node (ImplE, Seq c x) xs) = Node (ImplE, Seq (unionBy (~=) d g) x) ys
+  where
+    ys@((Node (_, Seq d _) _):(Node (_, Seq g _) _):_) = map contra xs
 contra (Node (r, Seq c x) xs)
     | r `elem` [ImplE, AndE, OrE, EFQ] = Node (r, Seq d x) ys
     | otherwise = Node (r, Seq c x) ys
   where
     ys@((Node (_, Seq d _) _):_) = map contra xs
 
-weaken (Node (ID, (Seq c x)) []) = (Node (ID, (Seq [x] x)) [], delete x c)
-weaken (Node (r, (Seq c x)) xs) = (Node (r, (Seq (c \\ d) x)) ys, intersect d c)
+weaken (Node (ID, (Seq c x)) []) = (Node (ID, (Seq [x] x)) [], deleteBy (~=) x c)
+weaken (Node (r, (Seq c x)) xs) = (Node (r, Seq (deleteFirstsBy (~=) c d) x) ys, intersectBy (~=) d c)
   where
     (ys, ds) = unzip $ map weaken xs
-    d = foldl1' intersect ds
+    d = foldl1' (intersectBy (~=)) ds
 
 shorten a@(Node (ID, _) _) = a
 shorten a@(Node (_, x) xs) = Node (t, y) (map shorten ys)
