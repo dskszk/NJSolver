@@ -39,7 +39,7 @@ weaken (Node (ID, (Seq c x)) []) = (Node (ID, (Seq [x] x)) [], deleteBy (~=) x c
 weaken (Node (r, (Seq c x)) xs) = (Node (r, Seq (deleteFirstsBy (~=) c d) x) ys, intersectBy (~=) d c)
   where
     (ys, ds) = unzip $ map weaken xs
-    d = foldl1' (intersectBy (~=)) ds
+    d = foldl1' (intersectBy (~=)) $ map (nubBy (~=)) ds
 
 shorten a@(Node (ID, _) _) = a
 shorten a@(Node (_, x) xs) = Node (t, y) (map shorten ys)
