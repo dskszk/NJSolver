@@ -5,7 +5,7 @@ A theorem prover for the Natural deduction Intuitionistic logic
 
 ## Overview
 
-It proves given theorem and (if that is provable) output a PDF which contains proof diagram.
+It proves given theorem and (if that is provable) outputs a PDF which contains proof diagram.
 
 ## Requirement
 
