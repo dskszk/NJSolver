@@ -44,16 +44,14 @@ shorten a@(Node (_, x) xs) = Node (t, y) (map shorten ys)
     (Node (t, y) ys) = fromMaybe a (fld x xs)
     fld x xs = foldr (<|>) empty (map (go x) xs)
     go _ (Node (ID, _) _) = Nothing
-    go (Seq c y) a@(Node (_, Seq d x) ys)
-        | eq' x y && null (deleteFirstsBy eq' d c) = Just a
-        | otherwise = fld (Seq c y) ys
-    eq' (Weak e1) (Weak e2) = e1 == e2
-    eq' (Weak e1) e2 = e1 == e2
-    eq' e1 (Weak e2) = e1 == e2
-    eq' e1 e2 = e1 == e2
+    go a@(Seq c y) (Node (r, Seq d x) ys)
+        | x ~= y && null (deleteFirstsBy (~=) d c) = Just (Node (r, a) ys)
+        | otherwise = fld a ys
 
 prove :: Sequent -> Maybe Diagram
-prove s = intro s <|> topDown s
+prove s@(Seq c x)
+    | any (x ~=) c = Just (Node (ID, s) [])
+    | otherwise = intro s <|> topDown s
 
 intro :: Sequent -> Maybe Diagram
 intro s@(Seq c (Or x y)) = do
@@ -70,27 +68,32 @@ intro _ = Nothing
 
 topDown :: Sequent -> Maybe Diagram
 topDown (Seq [] _) = Nothing
-topDown s@(Seq c y)
-    | y `elem` c = Just (Node (ID, Seq c y) [])
-    | otherwise = foldr (<|>) empty $ map helper c
+topDown s@(Seq c y) = foldr (<|>) empty $ map helper c
   where
     helper x = meet y (Node (ID, Seq c x) [])
 
 goDown :: Expr -> Diagram -> Maybe Diagram
-goDown g a@(Node (_, Seq c p@(Weak (And y z))) _) = meet g (Node (AndE, Seq (p `delete` c) y) [a]) <|> meet g (Node (AndE, Seq (p `delete` c) z) [a])
-goDown g a@(Node (_, Seq c p@(And y z)) _) =
-    meet g (Node (AndE, Seq ((Weak p):(p `delete` c)) y) [a]) <|> meet g (Node (AndE, Seq ((Weak p):(p `delete` c)) z) [a])
+goDown g a@(Node (_, Seq c p@(Weak (And y z))) _)
+    = meet g (Node (AndE, Seq (p `delete` c) y) [a])
+        <|> meet g (Node (AndE, Seq (p `delete` c) z) [a])
+goDown g a@(Node (_, Seq c p@(And y z)) _)
+    | p `elem` c = meet g (Node (AndE, Seq ((Weak p):(p `delete` c)) y) [a])
+        <|> meet g (Node (AndE, Seq ((Weak p):(p `delete` c)) z) [a])
+    | otherwise = meet g (Node (AndE, Seq c y) [a])
+        <|> meet g (Node (AndE, Seq c z) [a])
 goDown g y@(Node (_, s) _) = do
     (tag, p, q) <- elim g s
     r <- mapM prove p
     meet g (Node (tag, q) (y:r))
 
 meet g y@(Node (_, Seq c p) _)
-    | p == g = Just y
+    | p ~= g = Just y
     | otherwise = goDown g y
 
 elim g (Seq c p@(Weak (Impl y z))) = Just (ImplE, [Seq (p `delete` c) y], Seq (p `delete` c) z)
-elim g (Seq c p@(Impl y z)) = Just (ImplE, [Seq ((Weak p):(p `delete` c)) y], Seq (p `delete` c) z)
+elim g (Seq c p@(Impl y z))
+    | p `elem` c = Just (ImplE, [Seq ((Weak p):(p `delete` c)) y], Seq ((Weak p):(p `delete` c)) z)
+    | otherwise = Just (ImplE, [Seq c y], Seq c z)
 elim g (Seq c p@(Or y z)) =
     Just (OrE, [Seq (y:(p `delete` c)) g, Seq (z:(p `delete` c)) g], Seq c g)
 elim g (Seq c Fal) = Just (EFQ, [], Seq c g)

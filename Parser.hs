@@ -15,6 +15,12 @@ data Expr = Sym String
     | Weak Expr 
     | Fal deriving (Ord, Eq)
 
+(~=) :: Expr -> Expr -> Bool
+(Weak e1) ~= (Weak e2) = e1 == e2
+(Weak e1) ~= e2 = e1 == e2
+e1 ~= (Weak e2) = e1 == e2
+e1 ~= e2 = e1 == e2
+
 instance Show Sequent where
     show (Seq ant dec) = intercalate ", " (map (rmPar . show) ant) ++ "\\Rightarrow " ++ (rmPar $ show dec)
       where
