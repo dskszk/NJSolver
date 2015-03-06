@@ -4,37 +4,54 @@ import Text.Parsec
 import Text.Parsec.String
 import Control.Applicative (pure, (<$>), (<*>), (*>), (<*))
 import Data.List
+import qualified Data.Set as S
 
+data Sequent = Seq (S.Set Expr) Expr
 
-data Sequent = Seq [Expr] Expr
+data Mark = Weak | Norm
 
-data Expr = Sym String
+mark :: Body -> Expr
+mark e = Expr Norm e
+
+weaken :: Expr -> Expr
+weaken (Expr _ e) = Expr Weak e
+
+data Expr = Expr Mark Body
+
+data Body = Sym String
     | Impl Expr Expr
     | And Expr Expr
     | Or Expr Expr
-    | Weak Expr 
-    | Fal deriving (Ord, Eq)
+    | Fal deriving (Eq, Ord)
 
-(~=) :: Expr -> Expr -> Bool
-(Weak e1) ~= (Weak e2) = e1 == e2
-(Weak e1) ~= e2 = e1 == e2
-e1 ~= (Weak e2) = e1 == e2
-e1 ~= e2 = e1 == e2
+instance Eq Expr where
+    (Expr _ e1) == (Expr _ e2) = e1 == e2
+
+instance Ord Expr where
+    (Expr _ e1) <= (Expr _ e2) = e1 <= e2
+
+instance Show Expr where
+    show (Expr _ e) = show e
+
+showE :: Expr -> String
+showE e = rmPar $ show e
+  where
+    rmPar ('(':s) = init s
+    rmPar s = s
 
 instance Show Sequent where
-    show (Seq ant dec) = intercalate ", " (map (rmPar . show) ant) ++ "\\Rightarrow " ++ (rmPar $ show dec)
+    show (Seq ant dec) = intercalate ", " (map (rmPar . show) $ S.toList ant) ++ "\\Rightarrow " ++ (rmPar $ show dec)
       where
         rmPar ('(':s) = init s
         rmPar s = s
 
-instance Show Expr where
+instance Show Body where
     show (Sym s) = s
-    show (Impl Fal Fal) = "\\top"
-    show (Impl e Fal) = "\\lnot " ++ show e
+    show (Impl (Expr _ Fal) (Expr _ Fal)) = "\\top"
+    show (Impl e (Expr _ Fal)) = "\\lnot " ++ show e
     show (Impl e1 e2) = concat ["(", show e1, "\\to ", show e2, ")"]
     show (And e1 e2) = concat ["(", show e1, "\\land ", show e2, ")"]
     show (Or e1 e2) = concat ["(", show e1, "\\lor ", show e2, ")"]
-    show (Weak e) = show e
     show Fal = "\\bot"
 
 lexeme p = p <* spaces
@@ -46,13 +63,14 @@ parens p = between (match "(") (match ")") p
 commaSep p = sepBy p (match ",")
 
 sequent :: Parser Sequent
-sequent = Seq <$> commaSep expr <*> (resOp "=>" *> expr)
-expr = try (Impl <$> disj <*> (resOp "->" *> expr)) <|> disj
-disj = try (Or <$> conj <*> (resOp "|" *> disj)) <|> conj
-conj = try (And <$> sym <*> (resOp "&" *> conj)) <|> sym
-sym = try truth <|> Sym <$> ident <|> non <|> parens expr
-truth = pure Fal <* res "F" <|> pure (Impl Fal Fal) <* res "T"
-non = resOp "~" *> (Impl <$> sym <*> pure Fal)
+sequent = Seq <$> (S.fromList <$> commaSep expr) <*> (resOp "=>" *> expr)
+expr = try (mark <$> (Impl <$> disj <*> (resOp "->" *> expr))) <|> disj
+disj = try (mark <$> (Or <$> conj <*> (resOp "|" *> disj))) <|> conj
+conj = try (mark <$> (And <$> sym <*> (resOp "&" *> conj))) <|> sym
+sym = try truth <|> mark <$> Sym <$> ident <|> non <|> parens expr
+truth = pure (mark Fal) <* res "F"
+    <|> (pure $ mark $ Impl (mark Fal) (mark Fal)) <* res "T"
+non = resOp "~" *> (mark <$> (Impl <$> sym <*> (pure $ mark Fal)))
 
 start :: String -> Either String Sequent
 start str = case parse sequent "" str of
