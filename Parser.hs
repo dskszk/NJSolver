@@ -1,4 +1,14 @@
-module Parser where
+{-# LANGUAGE FlexibleContexts #-}
+
+module Parser(start,
+    Sequent(..),
+    Expr(..),
+    Mark(..),
+    mark,
+    showE,
+    weaken,
+    Body(..)
+    ) where
 
 import Text.Parsec
 import Text.Parsec.String
