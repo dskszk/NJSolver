@@ -80,16 +80,18 @@ prove s@(Seq c x)
     | otherwise = intro s <|> topDown s
 
 intro :: Sequent -> Maybe Diagram
-intro s@(Seq c (Expr Norm (Or x y))) = do
-    p <- prove (Seq c x) <|> prove (Seq c y)
-    return $ Node (OrI, s) [p]
-intro s@(Seq c (Expr Norm (And x y))) = do
-    p <- prove (Seq c x)
-    q <- prove (Seq c y)
-    return $ Node (AndI, s) [p, q]
-intro s@(Seq c (Expr Norm (Impl x y))) = do
-    p <- prove (Seq (S.insert x c) y)
-    return $ Node (ImplI, s) [p]
+intro s@(Seq c (Expr Norm e)) = formOf e
+  where
+    formOf (Or x y) = do
+        p <- prove (Seq c x) <|> prove (Seq c y)
+        return $ Node (OrI, s) [p]
+    formOf (And x y) = do
+        p <- prove (Seq c x)
+        q <- prove (Seq c y)
+        return $ Node (AndI, s) [p, q]
+    formOf (Impl x y) = do
+        p <- prove (Seq (S.insert x c) y)
+        return $ Node (ImplI, s) [p]
 intro _ = Nothing
 
 topDown :: Sequent -> Maybe Diagram
@@ -100,35 +102,39 @@ topDown s@(Seq c y)
     helper x = meet y (Node (ID, Seq c x) [])
 
 goDown :: Expr -> Diagram -> Maybe Diagram
-goDown g a@(Node (_, Seq c p@(Expr Weak (And y z))) _)
-    = meet g (Node (AndE, Seq (S.delete p c) y) [a])
-        <|> meet g (Node (AndE, Seq (S.delete p c) z) [a])
-goDown g a@(Node (_, Seq c p@(Expr Norm (And y z))) _)
-    | S.member p c =
-        meet g (Node (AndE, Seq (S.insert (weaken p) (S.delete p c)) y) [a])
-        <|> meet g (Node (AndE, Seq (S.insert (weaken p) (S.delete p c)) z) [a])
-    | otherwise = meet g (Node (AndE, Seq c y) [a])
-        <|> meet g (Node (AndE, Seq c z) [a])
-goDown g y@(Node (_, s) _) = do
-    (tag, p, q) <- elim g s
-    r <- mapM prove p
-    meet g (Node (tag, q) (y:r))
+goDown g a@(Node (_, Seq c e) _) = formOf e
+  where
+    formOf (Expr Weak (And y z))
+        = meet g (Node (AndE, Seq (S.delete e c) y) [a])
+            <|> meet g (Node (AndE, Seq (S.delete e c) z) [a])
+    formOf (Expr Norm (And y z))
+        | S.member e c = meet g (Node (AndE, Seq c' y) [a])
+            <|> meet g (Node (AndE, Seq c' z) [a])
+        | otherwise = meet g (Node (AndE, Seq c y) [a])
+            <|> meet g (Node (AndE, Seq c z) [a])
+    formOf _ = do
+        (tag, p, q) <- elim g (Seq c e)
+        r <- mapM prove p
+        meet g (Node (tag, q) (a:r))
+    c' = S.insert (weaken e) (S.delete e c)
 
 meet g y@(Node (_, Seq c p) _)
     | p == g = Just y
     | otherwise = goDown g y
 
-elim g (Seq c p@(Expr Weak (Impl y z))) =
-    Just (ImplE, [Seq (S.delete p c) y], Seq (S.delete p c) z)
-elim g (Seq c p@(Expr Norm (Impl y z)))
-    | S.member p c = Just (ImplE, [Seq (S.insert (weaken p) (S.delete p c)) y],
-        Seq (S.insert (weaken p) (S.delete p c)) z)
-    | otherwise = Just (ImplE, [Seq c y], Seq c z)
-elim g (Seq c p@(Expr _ (Or y z))) =
-    Just (OrE, [Seq (S.insert y (S.delete p c)) g,
-        Seq (S.insert z (S.delete p c)) g], Seq c g)
-elim g (Seq c (Expr _ Fal)) = Just (EFQ, [], Seq c g)
-elim _ _ = Nothing
+elim g (Seq c e) = formOf e
+  where
+    formOf (Expr Weak (Impl y z)) =
+        Just (ImplE, [Seq (S.delete e c) y], Seq (S.delete e c) z)
+    formOf (Expr Norm (Impl y z))
+        | S.member e c = Just (ImplE, [Seq c' y], Seq c' z)
+        | otherwise = Just (ImplE, [Seq c y], Seq c z)
+    formOf (Expr _ (Or y z)) =
+        Just (OrE, [Seq (addc y) g, Seq (addc z) g], Seq c g)
+    formOf (Expr _ Fal) = Just (EFQ, [], Seq c g)
+    formOf _ = Nothing
+    c' = addc (weaken e)
+    addc x = S.insert x (S.delete e c)
 
 test s = case start s of
     Left err -> putStrLn $ "Parse error: " ++ err
