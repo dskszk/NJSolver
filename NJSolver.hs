@@ -92,6 +92,7 @@ intro s@(Seq c (Expr Norm e)) = formOf e
     formOf (Impl x y) = do
         p <- prove (Seq (S.insert x c) y)
         return $ Node (ImplI, s) [p]
+    formOf _ = Nothing
 intro _ = Nothing
 
 topDown :: Sequent -> Maybe Diagram
