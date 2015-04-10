@@ -100,11 +100,6 @@ goDown g a@(Node (_, Seq c e) _) = formOf e
     formOf (Expr _ (And y z))
         = meet g (Node (AndE, Seq c' y) [a])
             <|> meet g (Node (AndE, Seq c' z) [a])
-{-    formOf (Expr Norm (And y z))
-        | S.member e c = meet g (Node (AndE, Seq c' y) [a])
-            <|> meet g (Node (AndE, Seq c' z) [a])
-        | otherwise = meet g (Node (AndE, Seq c y) [a])
-            <|> meet g (Node (AndE, Seq c z) [a]) -}
     formOf _ = do
         (tag, p, q) <- elim g $ Seq c e
         r <- mapM prove p
