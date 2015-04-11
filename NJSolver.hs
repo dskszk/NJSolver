@@ -6,7 +6,6 @@ import Data.List
 import qualified Data.Set as S
 import Data.Tree
 import Data.Maybe
-import Debug.Trace
 
 data Rule = ID | EFQ | ImplE | AndE | OrE | ImplI | AndI | OrI
     deriving (Ord, Eq)
@@ -24,16 +23,17 @@ instance Show Rule where
 type Diagram = Tree (Rule, Sequent)
 
 drawDiag :: [(Expr, Int)] -> Int -> Diagram -> (Int, String)
-drawDiag g n (Node (ID, Seq c x) [])
-    | isJust $ lookup x g
-        = (n, "\\infer[(" ++ (show $ fromJust $ lookup x g) ++ ")]{"
-            ++ (showE x) ++ "}{}")
-    | otherwise = (n, showE x)
+drawDiag g n (Node (ID, Seq c x) []) = case lookup x g of
+    Just m -> (n, "\\infer[(" ++ (show m) ++ ")]{"
+        ++ (showE x) ++ "}{}")
+    Nothing -> (n, showE x)
 drawDiag g n (Node (ImplI, Seq c a@(Expr _ (Impl x y))) (z:_))
     = (m, "\\infer[(\\to I," ++ (show n) ++ ")]{" ++ (showE a) ++ "}{"
         ++ ys ++ "}")
   where
-    (m, ys) = drawDiag ((x, n):g) (n + 1) z
+    (m, ys) = drawDiag ((f x) ++ g) (n + 1) z
+    f (Expr _ (And x y)) = (f x) ++ (f y)
+    f x = [(x, n)]
 drawDiag g n (Node (OrE, Seq c x) xs@(a:_))
     = (m, "\\infer[(\\lor E," ++ (show n) ++ ")]{" ++ (showE x) ++ "}{"
         ++ (intercalate "&" ys) ++ "}")
@@ -82,9 +82,11 @@ intro s@(Seq c (Expr Norm e)) = formOf e
         q <- prove $ Seq c y
         return $ Node (AndI, s) [p, q]
     formOf (Impl x y) = do
-        p <- prove $ Seq (S.insert x c) y
+        p <- prove $ Seq (insert' x c) y
         return $ Node (ImplI, s) [p]
     formOf _ = Nothing
+    insert' (Expr _ (And x y)) c = insert' x $ insert' y c
+    insert' x c = S.insert x c
 intro _ = Nothing
 
 topDown :: Sequent -> Maybe Diagram
@@ -92,19 +94,20 @@ topDown s@(Seq c y)
     | S.null c = Nothing
     | otherwise = foldr (<|>) empty $ map helper $ S.toList c
   where
-    helper x = meet y $ Node (ID, Seq c x) []
+    helper x = meet y $ Node (ID, Seq (weaken' x) x) []
+    weaken' x = S.insert (weaken x) $ S.delete x c
 
 goDown :: Expr -> Diagram -> Maybe Diagram
 goDown g a@(Node (_, Seq c e) _) = formOf e
   where
     formOf (Expr _ (And y z))
-        = meet g (Node (AndE, Seq c' y) [a])
-            <|> meet g (Node (AndE, Seq c' z) [a])
+        = meet g (Node (AndE, Seq c y) [a])
+            <|> meet g (Node (AndE, Seq c z) [a])
     formOf _ = do
         (tag, p, q) <- elim g $ Seq c e
         r <- mapM prove p
         meet g $ Node (tag, q) (a:r)
-    c' = S.insert (weaken e) $ S.delete e c
+    addc x y = S.insert y $ S.insert x $ S.delete e c
 
 meet g y@(Node (_, Seq c p) _)
     | p == g = Just y
@@ -112,20 +115,21 @@ meet g y@(Node (_, Seq c p) _)
 
 elim g (Seq c e) = formOf e
   where
-    formOf (Expr Weak (Impl y z)) =
-        Just (ImplE, [Seq wc y], Seq wc z)
+    {-
+    formOf (Expr Weak (Impl y z)) = Just (ImplE, [Seq wc y], Seq c z)
     formOf (Expr Norm (Impl y z))
-        | S.member e c = Just (ImplE, [Seq c' y], Seq c' z)
-        | otherwise = Just (ImplE, [Seq c y], Seq c z)
-    formOf (Expr _ (Or y z)) =
-        Just (OrE, [Seq (addc y) g, Seq (addc z) g], Seq c g)
+        | S.member e c = Just (ImplE, [Seq wc' y], Seq c' z)
+        | otherwise = Just (ImplE, [Seq wc y], Seq c z)
+    -}
+    formOf (Expr Weak (Impl y z)) = Just (ImplE, [Seq wc y], Seq c z)
+    formOf (Expr Norm (Impl y z)) = Just (ImplE, [Seq c y], Seq c z)
+    formOf (Expr _ (Or y z))
+        = Just (OrE, [Seq (addc y) g, Seq (addc z) g], Seq c g)
     formOf (Expr _ Fal) = Just (EFQ, [], Seq c g)
     formOf _ = Nothing
-    c' = S.insert (weaken e) (S.delete e c)
     wc = S.filter isNorm c
-    isNorm (Expr Weak _) = False
-    isNorm (Expr Norm _) = True
-    addc x = S.insert x $ S.delete e c
+    isNorm (Expr m _) = m == Norm
+    addc x = S.insert x (S.delete e wc)
 
 test s = case start s of
     Left err -> putStrLn $ "Parse error: " ++ err
