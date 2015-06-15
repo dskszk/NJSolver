@@ -82,11 +82,11 @@ intro s@(Seq c (Expr Norm e)) = formOf e
         q <- prove $ Seq c y
         return $ Node (AndI, s) [p, q]
     formOf (Impl x y) = do
-        p <- prove $ Seq (insert' x c) y
+        p <- prove $ insert' x y c
         return $ Node (ImplI, s) [p]
     formOf _ = Nothing
-    insert' (Expr _ (And x y)) c = insert' x $ insert' y c
-    insert' x c = S.insert x c
+    insert' (Expr _ (And x y)) z c = Seq (S.insert x c) (Expr Norm (Impl y z))
+    insert' x y c = Seq (S.insert x c) y
 intro _ = Nothing
 
 topDown :: Sequent -> Maybe Diagram
@@ -121,14 +121,15 @@ elim g (Seq c e) = formOf e
         | S.member e c = Just (ImplE, [Seq wc' y], Seq c' z)
         | otherwise = Just (ImplE, [Seq wc y], Seq c z)
     -}
-    formOf (Expr Weak (Impl y z)) = Just (ImplE, [Seq wc y], Seq c z)
+    formOf (Expr Weak (Impl y z)) = Just (ImplE, [Seq wc y], Seq wc z)
     formOf (Expr Norm (Impl y z)) = Just (ImplE, [Seq c y], Seq c z)
     formOf (Expr _ (Or y z))
         = Just (OrE, [Seq (addc y) g, Seq (addc z) g], Seq c g)
     formOf (Expr _ Fal) = Just (EFQ, [], Seq c g)
     formOf _ = Nothing
     wc = S.filter isNorm c
-    isNorm (Expr m _) = m == Norm
+    isNorm (Expr Norm _) = True
+    isNorm (Expr Weak _) = False
     addc x = S.insert x (S.delete e wc)
 
 test s = case start s of
